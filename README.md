@@ -1,7 +1,9 @@
 # 🌈 Işık ve Renk Simülasyonu
 
-Bu proje, **6. sınıf Fen Bilimleri dersi – Işık ve Renk** konusu için geliştirilmiş,
-tarayıcı üzerinden çalışan **interaktif bir web simülasyonudur**.
+Bu proje, **Fen Bilimleri dersi – Işık ve Renk** konusu için geliştirilmiş,
+tarayıcı üzerinden çalışan **interaktif bir web simülasyonudur**. İstenilirse telefona veya bilgisayara çevrimdışı olarakta indirilebilir.
+📱 Telefonda Chrome → Ana ekrana ekle
+🖥️ Bilgisayarda → Chrome - Kaydet kısmında Yükle (+) simgesi tıkla
 
 Öğrencilerin; ışığın renklerle etkileşimini, renkli cisimlerin farklı ışıklar altında
 nasıl göründüğünü **deneyerek ve gözlemleyerek** öğrenmelerini amaçlar.
