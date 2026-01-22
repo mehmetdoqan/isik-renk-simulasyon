@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Işık ve Renk –  Simülasyon</title>
+<style>
+  :root{
+    --stroke:rgba(255,255,255,.18);
+    --txt:#eef2ff;
+  }
+  *{ box-sizing:border-box; font-family:system-ui; }
+  body{
+    margin:0;
+    background:radial-gradient(circle at top,#2430a5,#050816 70%);
+    color:var(--txt);
+  }
+  .wrap{ max-width:1200px; margin:auto; padding:14px; }
+  h2{ margin:0 0 6px; }
+  small{ opacity:.75; display:block; margin-bottom:10px; }
+
+  .btn{
+    padding:8px 12px;
+    border-radius:12px;
+    border:1px solid var(--stroke);
+    background:#11184a;
+    color:var(--txt);
+    cursor:pointer;
+    user-select:none;
+    white-space:nowrap;
+  }
+  .btn:hover{ background:#1a2370; }
+
+  select{
+    background:#0f1540;
+    color:var(--txt);
+    border:1px solid var(--stroke);
+    border-radius:12px;
+    padding:8px 10px;
+  }
+
+  .panelWrap{
+    position:relative;
+    border:1px solid var(--stroke);
+    border-radius:14px;
+    overflow:hidden;
+    background:#000;
+  }
+
+  .controls{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    align-items:center;
+    padding:10px;
+    background:rgba(0,0,0,0.35);
+    border-bottom:1px solid rgba(255,255,255,0.10);
+    transition:transform .2s ease, opacity .2s ease;
+  }
+  .controls input[type="range"]{ width:120px; }
+  .controls input[type="color"]{
+    width:38px; height:28px; padding:0; border:none;
+    background:transparent;
+  }
+  .tag{ opacity:.85; }
+
+  canvas{
+    width:100%;
+    height:320px;
+    display:block;
+    touch-action:none;
+  }
+
+  /* Fake fullscreen */
+  .fakeFS{
+    position:fixed;
+    inset:0;
+    z-index:9999;
+    background:#000;
+    border-radius:0!important;
+  }
+  .fakeFS .controls{
+    padding:6px;
+    gap:6px;
+    font-size:12px;
+  }
+  .fakeFS .btn{
+    padding:4px 8px;
+    font-size:12px;
+    border-radius:10px;
+  }
+  .fakeFS .controls input[type="range"]{ width:85px; }
+  .fakeFS canvas{ height:calc(100vh - 70px); }
+
+  /* Kontroller gizliyken */
+  .hideControls .controls{
+    transform:translateY(-140%);
+    opacity:0;
+    pointer-events:none;
+  }
+  .hideControls canvas{ height:100vh; }
+</style>
+</head>
+
+<body>
+<div class="wrap">
+  <h2>🌈 Işık ve Renk –  Simülasyon</h2>
+  <small>Nesne rengi sabit · Ortamın Işık rengi değişirse · Görünen Nesne nasıl olur ?</small>
+
+  <div class="panelWrap" id="panelWrap">
+    <div class="controls" id="controls">
+      <span class="tag">R</span> <input id="r" type="range" min="0" max="255" value="255">
+      <span class="tag">G</span> <input id="g" type="range" min="0" max="255" value="255">
+      <span class="tag">B</span> <input id="b" type="range" min="0" max="255" value="255">
+
+      <button class="btn" id="fadeBtn">🌈 Fade: Kapalı</button>
+      <span class="tag">Hız</span> <input id="fadeSpeed" type="range" min="0.005" max="0.08" step="0.001" value="0.03">
+
+      <button class="btn" id="animBtn">✨ Animasyon Başlat</button>
+      <select id="animMode">
+        <option value="car">🚗 Araba</option>
+        <option value="stickman">🚶 Çöp Adam</option>
+        <option value="umbrella">🌂 Şemsiye</option>
+        <option value="dots">🔵 Noktalar</option>
+        <option value="gears">⚙️ Dişliler</option>
+      </select>
+
+      <span class="tag">Kalem</span>
+      <input type="color" id="penColor" value="#ff0000">
+      <span class="tag">Kalınlık</span>
+      <input id="penSize" type="range" min="2" max="24" value="7">
+
+      <button class="btn" id="clearBtn">Temizle</button>
+      <button class="btn" id="fsBtn">⛶ Tam ekran</button>
+      <button class="btn" id="toggleUIBtn" style="display:none">👁️ Gizle</button>
+
+      <!-- Beyaz buton her zaman görünür -->
+      <button class="btn" id="whiteBtn">⬜ Beyaz Panel</button>
+    </div>
+
+    <canvas id="screen"></canvas>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+
+  // DOM
+  const panelWrap = $("panelWrap");
+  const screen = $("screen");
+
+  const rEl = $("r"), gEl = $("g"), bEl = $("b");
+  const fadeBtn = $("fadeBtn"), fadeSpeedEl = $("fadeSpeed");
+  const animBtn = $("animBtn"), animModeEl = $("animMode");
+  const penColorEl = $("penColor"), penSizeEl = $("penSize");
+  const clearBtn = $("clearBtn");
+  const fsBtn = $("fsBtn"), toggleUIBtn = $("toggleUIBtn"), whiteBtn = $("whiteBtn");
+
+  // Contexts
+  const sctx = screen.getContext("2d", { willReadFrequently:true });
+
+  const userLayer = document.createElement("canvas");
+  const uctx = userLayer.getContext("2d", { willReadFrequently:true });
+
+  const animLayer = document.createElement("canvas");
+  const actx = animLayer.getContext("2d", { willReadFrequently:true });
+
+  const pigment = document.createElement("canvas");
+  const pctx = pigment.getContext("2d", { willReadFrequently:true });
+
+  let W = 600, H = 320;
+
+  function safeSize() {
+    const rect = screen.getBoundingClientRect();
+    const w = Math.max(300, Math.round(rect.width));
+    const h = Math.max(220, Math.round(rect.height));
+    return { w, h };
+  }
+
+  function getLight(){
+    return { r:+rEl.value, g:+gEl.value, b:+bEl.value };
+  }
+  function setLight(r,g,b){
+    rEl.value = r; gEl.value = g; bEl.value = b;
+  }
+
+  function rebuildPigment(){
+    pctx.clearRect(0,0,W,H);
+    pctx.drawImage(userLayer, 0, 0);
+    pctx.drawImage(animLayer, 0, 0);
+  }
+
+  function render(){
+    const {r,g,b} = getLight();
+
+    // ışık zemini
+    sctx.fillStyle = `rgb(${r},${g},${b})`;
+    sctx.fillRect(0,0,W,H);
+
+    // pigment × ışık
+    const src = pctx.getImageData(0,0,W,H);
+    const dst = sctx.getImageData(0,0,W,H);
+    const sd = src.data, dd = dst.data;
+
+    for(let i=0;i<sd.length;i+=4){
+      if(sd[i+3] === 0) continue;
+      dd[i]   = (sd[i]   * r) / 255;
+      dd[i+1] = (sd[i+1] * g) / 255;
+      dd[i+2] = (sd[i+2] * b) / 255;
+      dd[i+3] = 255;
+    }
+    sctx.putImageData(dst, 0, 0);
+  }
+
+  function resizeAll() {
+    const { w, h } = safeSize();
+    W = w; H = h;
+
+    // user çizimini koru
+    const tmp = document.createElement("canvas");
+    tmp.width = userLayer.width || W;
+    tmp.height = userLayer.height || H;
+    tmp.getContext("2d").drawImage(userLayer, 0, 0);
+
+    screen.width = W; screen.height = H;
+    userLayer.width = W; userLayer.height = H;
+    animLayer.width = W; animLayer.height = H;
+    pigment.width = W; pigment.height = H;
+
+    uctx.clearRect(0,0,W,H);
+    uctx.drawImage(tmp, 0,0, tmp.width,tmp.height, 0,0, W,H);
+
+    rebuildPigment();
+    render();
+  }
+
+  // ResizeObserver: fullscreen/gizle-göster daha stabil
+  const ro = new ResizeObserver(() => resizeAll());
+  ro.observe(panelWrap);
+  window.addEventListener("resize", resizeAll);
+  resizeAll();
+
+  // --- Çizim (mouse + touch) ---
+  let drawing = false;
+  let lastX = 0, lastY = 0;
+
+  function posFromEvent(e){
+    const rect = screen.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  }
+
+  function drawDot(x,y){
+    const rr = Math.max(1, (+penSizeEl.value)/2);
+    uctx.fillStyle = penColorEl.value;
+    uctx.beginPath();
+    uctx.arc(x,y,rr,0,Math.PI*2);
+    uctx.fill();
+  }
+
+  function startDraw(e){
+    e.preventDefault();
+    drawing = true;
+    const p = posFromEvent(e);
+    lastX = p.x; lastY = p.y;
+    drawDot(lastX,lastY);
+    rebuildPigment(); render();
+  }
+
+  function moveDraw(e){
+    if(!drawing) return;
+    e.preventDefault();
+    const p = posFromEvent(e);
+
+    uctx.strokeStyle = penColorEl.value;
+    uctx.lineWidth = +penSizeEl.value;
+    uctx.lineCap = "round";
+
+    uctx.beginPath();
+    uctx.moveTo(lastX,lastY);
+    uctx.lineTo(p.x,p.y);
+    uctx.stroke();
+
+    lastX = p.x; lastY = p.y;
+    rebuildPigment(); render();
+  }
+
+  function endDraw(){
+    if(!drawing) return;
+    drawing = false;
+    rebuildPigment(); render();
+  }
+
+  screen.addEventListener("mousedown", startDraw);
+  screen.addEventListener("mousemove", moveDraw);
+  window.addEventListener("mouseup", endDraw);
+
+  screen.addEventListener("touchstart", startDraw, {passive:false});
+  screen.addEventListener("touchmove", moveDraw, {passive:false});
+  screen.addEventListener("touchend", endDraw);
+
+  // --- Fade ---
+  let fadeOn = false;
+  let ft = 0;
+
+  fadeBtn.onclick = ()=>{
+    fadeOn = !fadeOn;
+    fadeBtn.textContent = fadeOn ? "🌈 Fade: Açık" : "🌈 Fade: Kapalı";
+  };
+
+  // slider değişince render
+  [rEl,gEl,bEl].forEach(el => el.addEventListener("input", () => {
+    if(whiteOn){
+      whiteOn = false;
+      savedLight = null;
+      whiteBtn.textContent = "⬜ Beyaz Panel";
+    }
+    render();
+  }));
+
+  // --- Tam ekran (fake) + gizle/göster ---
+  fsBtn.onclick = ()=>{
+    panelWrap.classList.toggle("fakeFS");
+    const on = panelWrap.classList.contains("fakeFS");
+    fsBtn.textContent = on ? "⤢ Çık" : "⛶ Tam ekran";
+
+    toggleUIBtn.style.display = on ? "inline-block" : "none";
+
+    if(!on){
+      panelWrap.classList.remove("hideControls");
+      toggleUIBtn.textContent = "👁️ Gizle";
+    }
+
+    setTimeout(resizeAll, 80);
+  };
+
+  toggleUIBtn.onclick = ()=>{
+    toggleControlsVisibility();
+  };
+
+  // --- Beyaz Panel (her zaman) + beyaza basınca fade durur ---
+  let savedLight = null;
+  let whiteOn = false;
+
+  whiteBtn.onclick = ()=>{
+    if(!whiteOn){
+      // Beyaza geçerken fade otomatik dursun
+      if(fadeOn){
+        fadeOn = false;
+        fadeBtn.textContent = "🌈 Fade: Kapalı";
+      }
+      savedLight = getLight();
+      setLight(255,255,255);
+      whiteBtn.textContent = "↩ Eski Işık";
+      whiteOn = true;
+    }else{
+      if(savedLight) setLight(savedLight.r, savedLight.g, savedLight.b);
+      savedLight = null;
+      whiteBtn.textContent = "⬜ Beyaz Panel";
+      whiteOn = false;
+    }
+    render();
+  };
+
+  // --- Animasyon: 0 kapalı, 1 çalışıyor, 2 donmuş ---
+  let animState = 0;
+  let t = 0;
+  let frozenT = 0;
+
+  animBtn.onclick = ()=>{
+    if(animState === 0){
+      animState = 1;
+      animBtn.textContent = "⏸ Animasyon Dondur";
+    }else if(animState === 1){
+      animState = 2;
+      frozenT = t;
+      animBtn.textContent = "▶ Animasyon Devam";
+    }else{
+      animState = 1;
+      animBtn.textContent = "⏸ Animasyon Dondur";
+    }
+  };
+
+  animModeEl.addEventListener("change", ()=>{
+    if(animState === 2){
+      drawAnimFrame(frozenT);
+      rebuildPigment(); render();
+    }
+  });
+
+  clearBtn.onclick = ()=>{
+    uctx.clearRect(0,0,W,H);
+    actx.clearRect(0,0,W,H);
+    animState = 0;
+    animBtn.textContent = "✨ Animasyon Başlat";
+    rebuildPigment(); render();
+  };
+
+  // --- Animasyon çizimleri (sabit renkler) ---
+  function circleFill(ctx,x,y,rad){
+    ctx.beginPath();
+    ctx.arc(x,y,rad,0,Math.PI*2);
+    ctx.closePath();
+    ctx.fill();
+  }
+  function roundRect(ctx,x,y,w,h,r){
+    const rr = Math.min(r,w/2,h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+rr,y);
+    ctx.arcTo(x+w,y,x+w,y+h,rr);
+    ctx.arcTo(x+w,y+h,x,y+h,rr);
+    ctx.arcTo(x,y+h,x,y,rr);
+    ctx.arcTo(x,y,x+w,y,rr);
+    ctx.closePath();
+  }
+
+  function drawCar(ctx, time){
+    const carW = Math.max(160, W*0.30);
+    const carH = Math.max(60,  H*0.22);
+    const baseY = H*0.68;
+
+    const speed = 90;
+    const x = ((time*speed) % (W + carW)) - carW;
+
+    // kırmızı gövde
+    ctx.fillStyle = "rgb(255,0,0)";
+    roundRect(ctx, x, baseY, carW, carH*0.55, 14);
+    ctx.fill();
+
+    // yeşil üst
+    ctx.fillStyle = "rgb(0,255,0)";
+    roundRect(ctx, x + carW*0.22, baseY - carH*0.32, carW*0.45, carH*0.32, 12);
+    ctx.fill();
+
+    // sarı far
+    ctx.fillStyle = "rgb(255,255,0)";
+    ctx.fillRect(x + carW*0.90, baseY + carH*0.18, carW*0.06, carH*0.14);
+
+    // tekerler
+    const wheelR = carH*0.20;
+    const wheelY = baseY + carH*0.60;
+
+    function wheel(cx){
+      // mavi teker
+      ctx.fillStyle = "rgb(0,0,255)";
+      circleFill(ctx, cx, wheelY, wheelR);
+
+      // sarı jant çizgileri (dönüyor)
+      ctx.save();
+      ctx.translate(cx, wheelY);
+      ctx.rotate(time*4.0);
+      ctx.strokeStyle = "rgb(255,255,0)";
+      ctx.lineWidth = Math.max(2, wheelR*0.18);
+      for(let i=0;i<4;i++){
+        ctx.beginPath();
+        ctx.moveTo(0,0);
+        ctx.lineTo(wheelR,0);
+        ctx.stroke();
+        ctx.rotate(Math.PI/2);
+      }
+      ctx.restore();
+    }
+
+    wheel(x + carW*0.25);
+    wheel(x + carW*0.78);
+  }
+
+  function drawStickman(ctx, time){
+    const x = ((time*70) % (W + 120)) - 60;
+    const ground = H*0.78;
+    const headR = Math.max(10, H*0.05);
+    const bodyLen = Math.max(46, H*0.18);
+
+    const neckY = ground - bodyLen - headR*0.2;
+    const shoulderY = neckY + headR*1.05;
+    const hipY = ground - bodyLen*0.25;
+
+    const swing = Math.sin(time*4.5);
+    const swing2 = Math.sin(time*4.5 + Math.PI);
+
+    ctx.lineWidth = Math.max(3, H*0.012);
+    ctx.lineCap = "round";
+
+    // kafa kırmızı
+    ctx.strokeStyle = "rgb(255,0,0)";
+    ctx.beginPath(); ctx.arc(x, neckY, headR, 0, Math.PI*2); ctx.stroke();
+
+    // gövde mavi
+    ctx.strokeStyle = "rgb(0,0,255)";
+    ctx.beginPath(); ctx.moveTo(x, shoulderY); ctx.lineTo(x, hipY); ctx.stroke();
+
+    // sol kol yeşil
+    ctx.strokeStyle = "rgb(0,255,0)";
+    ctx.beginPath(); ctx.moveTo(x, shoulderY); ctx.lineTo(x - bodyLen*0.45, shoulderY + bodyLen*0.18*swing); ctx.stroke();
+
+    // sağ kol cyan
+    ctx.strokeStyle = "rgb(0,255,255)";
+    ctx.beginPath(); ctx.moveTo(x, shoulderY); ctx.lineTo(x + bodyLen*0.45, shoulderY + bodyLen*0.18*swing2); ctx.stroke();
+
+    // sol bacak sarı
+    ctx.strokeStyle = "rgb(255,255,0)";
+    ctx.beginPath(); ctx.moveTo(x, hipY); ctx.lineTo(x - bodyLen*0.22, ground + bodyLen*0.18*(0.6 + 0.4*swing)); ctx.stroke();
+
+    // sağ bacak mor
+    ctx.strokeStyle = "rgb(255,0,255)";
+    ctx.beginPath(); ctx.moveTo(x, hipY); ctx.lineTo(x + bodyLen*0.22, ground + bodyLen*0.18*(0.6 + 0.4*swing2)); ctx.stroke();
+  }
+
+  function drawUmbrella(ctx, time){
+    const cx = W*0.5, cy = H*0.52;
+    const R = Math.min(W,H)*0.35;
+    const cols = [
+      "rgb(255,0,0)","rgb(255,255,0)",
+      "rgb(0,255,0)","rgb(0,255,255)",
+      "rgb(0,0,255)","rgb(255,0,255)"
+    ];
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(time*0.9);
+
+    const slices = 12;
+    for(let i=0;i<slices;i++){
+      const a0 = i*(Math.PI*2/slices);
+      const a1 = (i+1)*(Math.PI*2/slices);
+      ctx.beginPath();
+      ctx.moveTo(0,0);
+      ctx.arc(0,0,R,a0,a1);
+      ctx.closePath();
+      ctx.fillStyle = cols[i % cols.length];
+      ctx.fill();
+    }
+
+    ctx.fillStyle = "rgb(255,255,255)";
+    circleFill(ctx,0,0,Math.max(6,R*0.06));
+
+    ctx.strokeStyle = "rgb(0,0,0)";
+    ctx.lineWidth = Math.max(4, R*0.03);
+    ctx.beginPath(); ctx.moveTo(0,R*0.08); ctx.lineTo(0,R*0.78); ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawDots(ctx, time){
+    const cols = [
+      "rgb(255,0,0)","rgb(0,255,0)","rgb(0,0,255)",
+      "rgb(255,255,0)","rgb(0,255,255)","rgb(255,0,255)"
+    ];
+    const n = 28;
+    for(let i=0;i<n;i++){
+      const x = (i*97) % W;
+      const y = (i*157) % H;
+      const pulse = 0.5 + 0.5*Math.sin(time*2 + i);
+      const rr = 6 + 10*pulse;
+      ctx.fillStyle = cols[i % cols.length];
+      circleFill(ctx, x, y, rr);
+    }
+  }
+
+  function drawGears(ctx, time){
+    const cx = W*0.5, cy = H*0.55;
+
+    function gear(x,y,teeth,r1,r2,rot,color){
+      ctx.save();
+      ctx.translate(x,y);
+      ctx.rotate(rot);
+      ctx.beginPath();
+      for(let i=0;i<teeth*2;i++){
+        const a = i*Math.PI/teeth;
+        const rr = (i%2===0) ? r2 : r1;
+        ctx.lineTo(Math.cos(a)*rr, Math.sin(a)*rr);
+      }
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.fillStyle = "rgb(0,0,0)";
+      circleFill(ctx,0,0,r1*0.35);
+      ctx.restore();
+    }
+
+    gear(cx-160, cy+10, 14, 44, 62,  time*0.9,  "rgb(255,0,0)");
+    gear(cx,      cy,    16, 55, 78, -time*1.0, "rgb(0,255,0)");
+    gear(cx+160,  cy-8,  12, 40, 58,  time*1.15,"rgb(0,0,255)");
+  }
+
+  function drawAnimFrame(time){
+    actx.clearRect(0,0,W,H);
+    const mode = animModeEl.value;
+    if(mode === "car") drawCar(actx, time);
+    else if(mode === "stickman") drawStickman(actx, time);
+    else if(mode === "umbrella") drawUmbrella(actx, time);
+    else if(mode === "dots") drawDots(actx, time);
+    else if(mode === "gears") drawGears(actx, time);
+  }
+
+  // ===== Gizle/Göster ortak fonksiyon =====
+  function toggleControlsVisibility(){
+    // sadece tam ekranda çalışsın
+    if(!panelWrap.classList.contains("fakeFS")) return;
+
+    panelWrap.classList.toggle("hideControls");
+    toggleUIBtn.textContent = panelWrap.classList.contains("hideControls") ? "👁️ Göster" : "👁️ Gizle";
+    setTimeout(resizeAll, 50);
+  }
+
+  // Çift tık (desktop)
+  screen.addEventListener("dblclick", () => {
+    toggleControlsVisibility();
+  });
+
+  // Çift dokunuş (mobil)
+  let lastTapTime = 0;
+  screen.addEventListener("touchend", () => {
+    const now = Date.now();
+    if(now - lastTapTime < 350){
+      toggleControlsVisibility();
+    }
+    lastTapTime = now;
+  });
+
+  // Boşluk tuşu
+  window.addEventListener("keydown", (e) => {
+    if(e.code === "Space"){
+      e.preventDefault();
+      toggleControlsVisibility();
+    }
+  });
+
+  // --- Ana döngü ---
+  function tick(){
+    // Fade ışık
+    if(fadeOn){
+      ft += +fadeSpeedEl.value;
+      setLight(
+        Math.round(Math.abs(Math.sin(ft))*255),
+        Math.round(Math.abs(Math.sin(ft+2))*255),
+        Math.round(Math.abs(Math.sin(ft+4))*255)
+      );
+    }
+
+    // Animasyon zamanı
+    if(animState === 1){
+      t += 0.016;
+      drawAnimFrame(t);
+    }else if(animState === 2){
+      drawAnimFrame(frozenT);
+    }else{
+      actx.clearRect(0,0,W,H);
+    }
+
+    rebuildPigment();
+    render();
+    requestAnimationFrame(tick);
+  }
+
+  rebuildPigment();
+  render();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
